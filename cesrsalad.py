@@ -25,6 +25,7 @@ except:
 from collections import defaultdict
 import traceback
 from sklearn.feature_extraction.text import TfidfVectorizer
+import pprint
 
 CLIENT_CREDENTIALS = "/home/bear/.google/sdg_id.json"
 GOOGLE_CREDENTIALS = None
@@ -97,7 +98,50 @@ def validate(spreadsheet, args):
             similar_lines = similaritydict[k]
             for line in similar_lines:
                 x.add_row([k, col[k], line[0], line[1], line[2]])
-        print(x)  
+        print(x)
+
+
+    def validate_sdg_compass_metrics_sheet(wks):
+        """Perform validate on 'SDG Compass Metrics sheet
+           * Finds duplicate SDG Goals
+           * Finds duplicate SDG Target
+           * Finds closely mismatched Indicators
+        """
+    
+        def finddups(col, categoryname):
+            unique_dict = defaultdict(set)
+            mismatches = defaultdict(list)
+
+            for n, item in enumerate(col):
+                # Ignore first line since it is title
+                if n < 1:
+                    continue
+                x = item.split()[0]
+                cid = x[:-1] if x[-1] == "." else x
+                if item not in unique_dict[cid]:
+                    mismatches[cid].append([item, n+1])
+                unique_dict[cid].add(item)
+
+            remove = [item for item in mismatches if len(mismatches[item]) > 1]
+            mismatches = { k:mismatches[k] for k in mismatches if k in remove}
+        
+            if len(mismatches) > 0:
+                print("\n\n Test for duplicate values for {} found: Failed".format(categoryname))
+                print("\n ------------")
+                print("\n {} ID -> list of (Mismatched Values, Mismatched Rows)".format(categoryname))
+                print("\n ------------")
+                pprint.pprint(mismatches)
+            else:
+                print("\n\n Test for duplicate values for {} found: Passed".format(categoryname))
+                
+
+        goals = wks.col_values(1)
+        finddups(goals, "SDG Goal")
+
+        targets = wks.col_values(2)
+        finddups(targets, "SDG Target")
+        indicators = wks.col_values(6)
+
                     
     def validate_bia_sdg_mapping_sheet(wks):
         """Performs validation on 'BIA to SDG mapping' sheet
@@ -176,7 +220,14 @@ def validate(spreadsheet, args):
 
     #print('\n\n{0:-^60}\n'.format('Validate similarity lines'))
     #metricwks = spreadsheet.worksheet("SDG Compass Metrics")
-    #find_similar_text(metricwks.col_values(6))    
+    #find_similar_text(metricwks.col_values(6))
+
+    worksheet_name = "SDG Compass Metrics"
+    print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
+    wks = spreadsheet.worksheet(worksheet_name)
+    validate_sdg_compass_metrics_sheet(wks)
+    
+
 
         
 
