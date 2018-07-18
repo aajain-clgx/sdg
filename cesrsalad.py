@@ -16,15 +16,10 @@ except:
     print("Please install prettytable module")
     print("pip3 install prettytable")
     sys.exit(1)
-try:
-    import spacy
-except:
-    print("Please install spacy module")
-    print("pip3 install spacy")
-    sys.exit(1)
+
+import similarity
 from collections import defaultdict
 import traceback
-from sklearn.feature_extraction.text import TfidfVectorizer
 import pprint
 
 CLIENT_CREDENTIALS = "/home/bear/.google/sdg_id.json"
@@ -59,53 +54,51 @@ def open_spreadsheet(spreadsheet_name):
 
 
 def validate(spreadsheet, args):
-    """Perform various cross validations and output a report"""
+    """Perform various cross validations on worksheets 
+        in a spreadsheet and generate output a report"""
  
-    def find_similar_text(col):
-        nlp = spacy.load('en')
-        similaritydict = {}
-        count = 0
+    def find_similar_text(col, args):
+        """ Uses similarity.py module to find similar text
+            * We remove all duplicates first
+            * We store row location of all indicator text
+            * We apply NLP similarity on deduped list
+            * In fast mode, we use sorted list and start comparing from the location
+              of the first string.
+            * In deep mode, we search every sentence with other
+        """
 
-        vect = TfidfVectorizer(min_df=1)
-        tfidf = vect.fit_transform(col)
-        result = tfidf * tfidf.T
-        print(result)
+        col_line_dict = defaultdict(list)
+        for n,x in enumerate(col):
+            col_line_dict[x].append(n+1)
 
-        for n1, val1 in enumerate(col):
-        
-            if n1 < 50:
-                continue;
-            count+=1
-            l = []
-            d1 = nlp(val1)
-    
-            for n2, val2 in enumerate(col):
-                if n1 == n2:
+        colunique = list(set(col))
+        colunique.sort()
+
+        similar_lines = []
+
+        for n1, val1 in enumerate(colunique):
+            if val1 == '':
+                continue
+            for n2, val2 in enumerate(colunique[n1:]):
+                if val2 == '':
                     continue
-                d2 = nlp(val2)
-                similarity = d1.similarity(d2)
-                if similarity > 0.89:
-                    l.append([ n2, val2, similarity])
-            
-            #l.sort(key=lambda x: x[4])
-            similaritydict[n1] = l
-            if count > 3:
-                break
-            
-
-        x = PrettyTable(["Indicator Description Row", "Indicator Description Value", "Similar Row", "Similar Row Value", "Similarity Value"])
-        for k in similaritydict:
-            similar_lines = similaritydict[k]
-            for line in similar_lines:
-                x.add_row([k, col[k], line[0], line[1], line[2]])
-        print(x)
+                if val1 == val2:
+                    continue
+                similar_val = similarity.cosine_sim(val1, val2)
+                if similar_val > 0.7:
+                    similar_lines = [col_line_dict[val1], val1, col_line_dict[val2], val2]
+                    print("\n Row: {}\n'{}'\n----\n Row: {}\n'{}'\nSimilarity Score = {:.3f}\n\n\n ====".format(
+                            similar_lines[0], similar_lines[1],
+                            similar_lines[2], similar_lines[3], similar_val))
+                else:
+                    if not args.deeply_similar:
+                        break
 
 
     def validate_sdg_compass_metrics_sheet(wks):
         """Perform validate on 'SDG Compass Metrics sheet
            * Finds duplicate SDG Goals
            * Finds duplicate SDG Target
-           * Finds closely mismatched Indicators
         """
     
         def finddups(col, categoryname):
@@ -140,7 +133,6 @@ def validate(spreadsheet, args):
 
         targets = wks.col_values(2)
         finddups(targets, "SDG Target")
-        indicators = wks.col_values(6)
 
                     
     def validate_bia_sdg_mapping_sheet(wks):
@@ -214,22 +206,18 @@ def validate(spreadsheet, args):
 
     worksheet_name = "BIA to SDG mapping"
     wks = spreadsheet.worksheet(worksheet_name)
-
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
     validate_bia_sdg_mapping_sheet(wks)
-
-    #print('\n\n{0:-^60}\n'.format('Validate similarity lines'))
-    #metricwks = spreadsheet.worksheet("SDG Compass Metrics")
-    #find_similar_text(metricwks.col_values(6))
 
     worksheet_name = "SDG Compass Metrics"
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
     wks = spreadsheet.worksheet(worksheet_name)
     validate_sdg_compass_metrics_sheet(wks)
     
+    print('\n\n{0:-^60}\n'.format('Finding similar Indicator value candidates'))
+    metricwks = spreadsheet.worksheet("SDG Compass Metrics")
+    find_similar_text(metricwks.col_values(6), args)
 
-
-        
 
 def main():
  
@@ -250,6 +238,13 @@ def main():
         action = "store",
         default = "BIA V5 SDG Alignment",
         help = "Name of Google spreadsheet to open"
+    )
+        
+    parser.add_argument(
+        "--deeply-similar",
+        type=bool,
+        default = False,
+        help = "Perform exhaustive similarity search between text. Warning: Takes long time"
     )
     
     args = parser.parse_args()
