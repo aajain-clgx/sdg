@@ -18,7 +18,7 @@ except:
     sys.exit(1)
 
 import similarity
-from utils import *
+import utils
 from collections import defaultdict
 import traceback
 import pprint
@@ -77,16 +77,8 @@ def validate(worksheets, args):
                Direct or Indirect Target column
                The format should be like digit.digit or digit.alpha
             """
-            syntax = re.compile("^\d{1,2}\.([0-9]{1,2}|[a-z])$")
-            mismatches = defaultdict(list)
 
-            for n,x in enumerate(wks):
-                if n < 2: 
-                    continue
-                target_list = get_target_list(wks, n, colnumber)
-                invalid_list = [a for a in target_list if syntax.match(a) is None]
-                if len(invalid_list) > 0:
-                    mismatches[n+1].extend(invalid_list)
+            mismatches = utils.validate_target_format(wks, colnumber)
 
             if len(mismatches) == 0:
                 print("\n Test invalid syntax for {} Targets: Passed".format(coltitle))
@@ -110,9 +102,7 @@ def validate(worksheets, args):
                             
             for n,x in enumerate(wks):
                 # Ignore first two lines since they contain titles
-                if n < 2:
-                    continue
-                target_list = get_target_list(wks,n, colnumber)
+                target_list = utils.get_target_list(wks,n, colnumber)
                 concept_code = x[0]
                 if concept_code in concepts_dict:
                     if concepts_dict[concept_code][0] != target_list:
@@ -153,7 +143,7 @@ def validate(worksheets, args):
               of the first string.
             * In deep mode, we search every sentence with other
         """
-        col = get_column(wks, 5)
+        col = utils.get_column(wks, 5)
         col_line_dict = defaultdict(list)
         for n,x in enumerate(col):
             col_line_dict[x].append(n+1)
@@ -190,21 +180,7 @@ def validate(worksheets, args):
     
         def finddups(colnumber, categoryname):
 
-            unique_dict = defaultdict(set)
-            mismatches = defaultdict(list)
-
-            for n, item in enumerate(wks):
-                # Ignore first line since it is title
-                if n < 1:
-                    continue
-                x = item[colnumber].split()[0]
-                cid = x[:-1] if x[-1] == "." else x
-                if item[colnumber] not in unique_dict[cid]:
-                    mismatches[cid].append([item[colnumber], n+1])
-                unique_dict[cid].add(item[colnumber])
-
-            remove = [item for item in mismatches if len(mismatches[item]) > 1]
-            mismatches = { k:mismatches[k] for k in mismatches if k in remove}
+            mismatches = utils.finddups(wks, colnumber)
         
             if len(mismatches) > 0:
                 print("\n\n Test for duplicate values for {} found: Failed".format(categoryname))
@@ -219,8 +195,8 @@ def validate(worksheets, args):
         finddups(0, "SDG Goal")
         finddups(1, "SDG Target")
 
-                    
-
+     
+    # Build source dictionary for Targets and                
     worksheet_name = "BIA to SDG mapping"
     wks = worksheets[worksheet_name]
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
@@ -229,11 +205,11 @@ def validate(worksheets, args):
     worksheet_name = "SDG Compass Metrics"
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
     wks = worksheets[worksheet_name]
-    #validate_sdg_compass_metrics_sheet(wks)
+    validate_sdg_compass_metrics_sheet(wks)
     
     print('\n\n{0:-^60}\n'.format('Finding similar Indicator value candidates'))
     metricwks = worksheets["SDG Compass Metrics"]
-    #find_similar_text(metricwks, args)
+    find_similar_text(metricwks, args)
 
 
 def buildgraph(sheet):
@@ -248,11 +224,33 @@ def buildgraph(sheet):
     concept_graph = graph()
     
     for n, rows in enumerate(all_values):
-        if n < 2:
-            continue
         concept_dict[rows[1]]
     
-   
+
+def download_and_remove_title(sheet):
+    """
+        Download entire worksheets data so we minimize calls to Google API
+        This is to prevent getting dinged from Google for excessive API usage
+    """
+    # Setup how many rows are occupied by title
+    # For processing, we igore these rows
+
+    wks_ignore_title_count = {}
+    wks_ignore_title_count["BIA to SDG mapping"] = 2
+    wks_ignore_title_count["BIA to SDG Target Mapping"] = 2
+    wks_ignore_title_count["SDG Goal"] = 2
+    wks_ignore_title_count["SDG Compass Metrics"] = 1
+
+    worksheet_dict = {}
+    for wks in sheet.worksheets():
+        wks_data = wks.get_all_values()
+        if wks.title in wks_ignore_title_count:
+            worksheet_dict[wks.title] = wks_data[wks_ignore_title_count[wks.title]:]
+        else:
+            worksheet_dict[wks.title] = wks_data
+
+    return worksheet_dict
+
 
 def main():
  
@@ -292,11 +290,9 @@ def main():
                      if args.live else "BIA V5 SDG Alignment"
         ssheet = open_spreadsheet(sheet_name)
         print("Using sheet: {}".format(sheet_name))
-   
+
         # Cache GoogleSheet data to avoid bumping into API limits
-        worksheet_dict = {}
-        for wks in ssheet.worksheets():
-            worksheet_dict[wks.title] = wks.get_all_values() 
+        worksheet_dict = download_and_remove_title(ssheet)
      
         if args.action == "validate":
             validate(worksheet_dict, args)
