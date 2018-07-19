@@ -18,11 +18,12 @@ except:
     sys.exit(1)
 
 import similarity
+from utils import *
 from collections import defaultdict
 import traceback
 import pprint
 
-CLIENT_CREDENTIALS = "/home/bear/.google/sdg_id.json"
+CLIENT_CREDENTIALS = "~/.google/sdg_id.json"
 GOOGLE_CREDENTIALS = None
 
 
@@ -34,11 +35,12 @@ def initialize_google():
     """
     
     # Validate credentials client file
-    if os.path.exists(CLIENT_CREDENTIALS):
+    client_cred_file = os.path.expanduser(CLIENT_CREDENTIALS)
+    if os.path.exists(client_cred_file):
         scope = [ 'https://spreadsheets.google.com/feeds',
                   'https://www.googleapis.com/auth/drive']
 
-        cred =  ServiceAccountCredentials.from_json_keyfile_name(CLIENT_CREDENTIALS, scope)
+        cred =  ServiceAccountCredentials.from_json_keyfile_name(client_cred_file, scope)
         global GOOGLE_CREDENTIALS
         GOOGLE_CREDENTIALS = gspread.authorize(cred)
         
@@ -53,11 +55,96 @@ def open_spreadsheet(spreadsheet_name):
     return GOOGLE_CREDENTIALS.open(spreadsheet_name)
 
 
-def validate(spreadsheet, args):
+def validate(worksheets, args):
     """Perform various cross validations on worksheets 
         in a spreadsheet and generate output a report"""
  
-    def find_similar_text(col, args):
+    def validate_bia_sdg_mapping_sheet(wks):
+        """Performs validation on 'BIA to SDG mapping' sheet
+           Validates that we have identical DirectTargets and IndirectTargets
+           for rows with same Concept Code.
+
+           Assumptions:
+            * First two rows are ignored by the script since they contain column title. 
+              If you add additional title row, script will need to be updated.
+            * DirectTargets/IndirectTargets columns: If the line begins with alphabet, 
+              it is ignored by script. If it begins with a numerical, it is used for
+              building graph mapping
+        """
+       
+        def validate_target_format(colnumber, coltitle):
+            """Helper function to validate the syntax of a target specified in 
+               Direct or Indirect Target column
+               The format should be like digit.digit or digit.alpha
+            """
+            syntax = re.compile("^\d{1,2}\.([0-9]{1,2}|[a-z])$")
+            mismatches = defaultdict(list)
+
+            for n,x in enumerate(wks):
+                if n < 2: 
+                    continue
+                target_list = get_target_list(wks, n, colnumber)
+                invalid_list = [a for a in target_list if syntax.match(a) is None]
+                if len(invalid_list) > 0:
+                    mismatches[n+1].extend(invalid_list)
+
+            if len(mismatches) == 0:
+                print("\n Test invalid syntax for {} Targets: Passed".format(coltitle))
+            else:
+                print("\n Test invalid syntax for {} Targets: Failed".format(coltitle))
+                table = PrettyTable(["Row Number", "Invalid Systax {} Targets".format(coltitle)])
+                table.border = True
+
+                for x in mismatches:
+                    table.add_row([x, ",".join("'{}'".format(str(y)) for y in mismatches[x])])
+                print(table)
+
+
+        def crossvalidate_with_concept_code(colnumber, coltitle):
+            """Helper function for validate_bia_sdg_mapping_sheet
+               Common code to validate either DirectTarget or IndirectTarget
+            """
+
+            concepts_dict = {}
+            mismatches = defaultdict(list)
+                            
+            for n,x in enumerate(wks):
+                # Ignore first two lines since they contain titles
+                if n < 2:
+                    continue
+                target_list = get_target_list(wks,n, colnumber)
+                concept_code = x[0]
+                if concept_code in concepts_dict:
+                    if concepts_dict[concept_code][0] != target_list:
+                        if concept_code not in mismatches:
+                            if concepts_dict[concept_code] not in mismatches[concept_code]:
+                                mismatches[concept_code].append(concepts_dict[concept_code])
+                            mismatches[concept_code].append([target_list, n+1])
+                else:
+                    concepts_dict[concept_code] = [target_list, n+1]
+
+            if len(mismatches) == 0:
+                print("\n Test for mismatched {} Targets found (for same ConceptCode): Passed".format(coltitle))
+            else:
+                print("\n Test for mismatched {} Target text found (for same ConceptCode): Failed".format(coltitle))
+                table = PrettyTable(["Concept Code", "Mismatched {} Targets".format(coltitle), "Mismatched Row Number"])
+                table.border = True
+
+                for x in mismatches:
+                    for items in mismatches[x]:
+                        table.add_row([x, ",".join((str(y) for y in items[0])), items[1]])
+                print(table)
+
+        # Validate Targets Syntax
+        validate_target_format(32, "Direct")
+        validate_target_format(33, "Indirect")        
+
+        # Perform Validation Direct_Targets, Indirect_Targets column against Concept Code
+        crossvalidate_with_concept_code(32, "Direct")
+        crossvalidate_with_concept_code(33, "Indirect")
+
+
+    def find_similar_text(wks, args):
         """ Uses similarity.py module to find similar text
             * We remove all duplicates first
             * We store row location of all indicator text
@@ -66,7 +153,7 @@ def validate(spreadsheet, args):
               of the first string.
             * In deep mode, we search every sentence with other
         """
-
+        col = get_column(wks, 5)
         col_line_dict = defaultdict(list)
         for n,x in enumerate(col):
             col_line_dict[x].append(n+1)
@@ -101,19 +188,20 @@ def validate(spreadsheet, args):
            * Finds duplicate SDG Target
         """
     
-        def finddups(col, categoryname):
+        def finddups(colnumber, categoryname):
+
             unique_dict = defaultdict(set)
             mismatches = defaultdict(list)
 
-            for n, item in enumerate(col):
+            for n, item in enumerate(wks):
                 # Ignore first line since it is title
                 if n < 1:
                     continue
-                x = item.split()[0]
+                x = item[colnumber].split()[0]
                 cid = x[:-1] if x[-1] == "." else x
-                if item not in unique_dict[cid]:
-                    mismatches[cid].append([item, n+1])
-                unique_dict[cid].add(item)
+                if item[colnumber] not in unique_dict[cid]:
+                    mismatches[cid].append([item[colnumber], n+1])
+                unique_dict[cid].add(item[colnumber])
 
             remove = [item for item in mismatches if len(mismatches[item]) > 1]
             mismatches = { k:mismatches[k] for k in mismatches if k in remove}
@@ -128,121 +216,68 @@ def validate(spreadsheet, args):
                 print("\n\n Test for duplicate values for {} found: Passed".format(categoryname))
                 
 
-        goals = wks.col_values(1)
-        finddups(goals, "SDG Goal")
-
-        targets = wks.col_values(2)
-        finddups(targets, "SDG Target")
+        finddups(0, "SDG Goal")
+        finddups(1, "SDG Target")
 
                     
-    def validate_bia_sdg_mapping_sheet(wks):
-        """Performs validation on 'BIA to SDG mapping' sheet
-           Validates that we have identical DirectTargets and IndirectTargets
-           for rows with same Concept Code.
-
-           Assumptions:
-            * First two rows are ignored by the script since they contain column title. 
-              If you add additional title row, script will need to be updated.
-            * DirectTargets/IndirectTargets columns: If the line begins with alphabet, 
-              it is ignored by script. If it begins with a numerical, it is used for
-              building graph mapping
-        """
-       
-        def crossvalidate(concepts_column, colnumber):
-            """Helper function for validate_bia_sdg_mapping_sheet
-               Common code to validate either DirectTarget or IndirectTarget
-            """
-
-            concepts_dict = {}
-            targets = wks.col_values(colnumber)
-            mismatches = defaultdict(list)
-                
-            # Google sheets cleanup           
-            difflen = len(targets) - len(concepts_column)
-            if difflen < 0:
-                targets.extend([''] * abs(difflen))
-                            
-            for n,x in enumerate(concepts_column):
-                # Ignore first two lines since they contain titles
-                if n < 2:
-                    continue
-                if x in concepts_dict:
-                    if concepts_dict[x][0] != targets[n]:
-                        if x not in mismatches:
-                            mismatches[x].append(concepts_dict[x][1])
-                            mismatches[x].append(n+1)
-                else:
-                    concepts_dict[x] = [targets[n], n+1]
-
-            return mismatches
-
-
-        # Read Concepts, Direct_Targets, Indirect_Targets column
-        concepts_column = wks.col_values(1)
-        direct_mismatches = crossvalidate(concepts_column, 33)
-        indirect_mismatches = crossvalidate(concepts_column, 34)
-
-        if len(direct_mismatches) == 0:
-            print("\n Test for mismatched DirectTarget text found (for same ConceptCode): Passed")
-        else:
-            print("\n Test for mismatched DirectTarget text found (for same ConceptCode): Failed")
-            table = PrettyTable(["Concept Code", "Mismatched Text Rows"])
-            table.border = True
-
-            for x in direct_mismatches:
-                table.add_row([x, ",".join((str(y) for y in direct_mismatches[x]))])
-            print(table)
-
-        if len(indirect_mismatches) == 0:
-            print("\n Test for mismatched IndirectTarget text found (for same ConceptCode): Passed")
-        else:
-            print("\n Test for mismatched IndirectTarget text found (for same ConceptCode): Failed")
-            table = PrettyTable(["Concept Code", "Mismatched Text Rows"])
-            table.border = True
-            for x in indirect_mismatches:
-                table.add_row([x, ",".join((str(y) for y in indirect_mismatches[x]))])
-            print(table)
-
 
     worksheet_name = "BIA to SDG mapping"
-    wks = spreadsheet.worksheet(worksheet_name)
+    wks = worksheets[worksheet_name]
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
     validate_bia_sdg_mapping_sheet(wks)
 
     worksheet_name = "SDG Compass Metrics"
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
-    wks = spreadsheet.worksheet(worksheet_name)
-    validate_sdg_compass_metrics_sheet(wks)
+    wks = worksheets[worksheet_name]
+    #validate_sdg_compass_metrics_sheet(wks)
     
     print('\n\n{0:-^60}\n'.format('Finding similar Indicator value candidates'))
-    metricwks = spreadsheet.worksheet("SDG Compass Metrics")
-    find_similar_text(metricwks.col_values(6), args)
+    metricwks = worksheets["SDG Compass Metrics"]
+    #find_similar_text(metricwks, args)
 
+
+def buildgraph(sheet):
+    """Build a python graph representation of data"""
+
+    def graph(): return defaultdict(graph)
+    def graph_to_dict(graph): return {k: graph_to_dict(t[k]) for k in t}
+
+    wks = sheet.worksheet("BIA to SDG mapping")
+    all_values = wks.get_all_values()
+    
+    concept_graph = graph()
+    
+    for n, rows in enumerate(all_values):
+        if n < 2:
+            continue
+        concept_dict[rows[1]]
+    
+   
 
 def main():
  
     # Define inputs to scripts
    
     parser = argparse.ArgumentParser(
-        description="Tool to manipulate SDG spreadsheet such as validation, build graph links")
+        description="Tool to manipulate SDG spreadsheet such as validation, build graph links and sync sheets")
 
     parser.add_argument(
         "action",
         action = "store",
-        choices = ["validate"],
+        choices = ["validate", "graph"],
         help = "Pass one of these action for script to perform"
     )
 
     parser.add_argument(
-        "--sheet",
-        action = "store",
-        default = "BIA V5 SDG Alignment",
-        help = "Name of Google spreadsheet to open"
+        "--live",
+        action = "store_true",
+        default = False,
+        help = "If specified, use spreadsheet version shared by everyone"
     )
         
     parser.add_argument(
         "--deeply-similar",
-        type=bool,
+        action = "store_true",
         default = False,
         help = "Perform exhaustive similarity search between text. Warning: Takes long time"
     )
@@ -253,22 +288,23 @@ def main():
 
         # Initialize Google and open Spreadsheet        
         initialize_google()
-        ssheet = open_spreadsheet(args.sheet)
-        
-        if args.action == "validate":
-            validate(ssheet, args)
+        sheet_name = "BIA V5 SDG Alignment as of 05-2018 WORKING DRAFT.xlsx" \
+                     if args.live else "BIA V5 SDG Alignment"
+        ssheet = open_spreadsheet(sheet_name)
+        print("Using sheet: {}".format(sheet_name))
+   
+        # Cache GoogleSheet data to avoid bumping into API limits
+        worksheet_dict = {}
+        for wks in ssheet.worksheets():
+            worksheet_dict[wks.title] = wks.get_all_values() 
      
-        # Test to read DirectTarget column
-        wks = ssheet.worksheet("BIA to SDG mapping")
-        targets = [a.strip() for a in wks.acell("AH47").value.splitlines() if not(a.strip()[0].isalpha())]
-        
+        if args.action == "validate":
+            validate(worksheet_dict, args)
 
     except Exception as ex:
         traceback.print_exc()
         print("Error while processing script: {}".format(ex))
         
- 
-
 
 if __name__ == "__main__":
   main()
