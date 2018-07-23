@@ -16,12 +16,19 @@ except:
     print("Please install prettytable module")
     print("pip3 install prettytable")
     sys.exit(1)
+try:
+    import xlsxwriter
+except:
+    print("Please install xlsxwriter module")
+    print("pip3 install xlsxwriter")
+    sys.exit(1)
 
 import similarity
 import utils
 from collections import defaultdict
 import traceback
 import pprint
+import datetime
 
 CLIENT_CREDENTIALS = "~/.google/sdg_id.json"
 GOOGLE_CREDENTIALS = None
@@ -55,11 +62,11 @@ def open_spreadsheet(spreadsheet_name):
     return GOOGLE_CREDENTIALS.open(spreadsheet_name)
 
 
-def validate(worksheets, args):
+def validate(worksheets, args, report, ignore_title_count):
     """Perform various cross validations on worksheets 
         in a spreadsheet and generate output a report"""
  
-    def validate_bia_sdg_mapping_sheet(wks):
+    def validate_bia_sdg_mapping_sheet(wks, reportsheet_dict, title_count):
         """Performs validation on 'BIA to SDG mapping' sheet
            Validates that we have identical DirectTargets and IndirectTargets
            for rows with same Concept Code.
@@ -72,27 +79,46 @@ def validate(worksheets, args):
               building graph mapping
         """
        
-        def validate_target_format(colnumber, coltitle):
+        def validate_target_format(colnumber, coltitle, rd, title_count):
             """Helper function to validate the syntax of a target specified in 
                Direct or Indirect Target column
                The format should be like digit.digit or digit.alpha
             """
 
             mismatches = utils.validate_target_format(wks, colnumber)
-
+            
             if len(mismatches) == 0:
                 print("\n Test invalid syntax for {} Targets: Passed".format(coltitle))
+                rd["sheet"].write(rd["row"], 0, "Test invalid syntax for {} Targets".format(coltitle))
+                rd["sheet"].write(rd["row"], 1, "Passed", rd["green"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
             else:
                 print("\n Test invalid syntax for {} Targets: Failed".format(coltitle))
-                table = PrettyTable(["Row Number", "Invalid Systax {} Targets".format(coltitle)])
+                rd["sheet"].write(rd["row"], 0, "Test invalid syntax for {} Targets".format(coltitle))
+                rd["sheet"].write(rd["row"], 1, "Failed", rd["red"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+
+                table = PrettyTable(["Row Number", "Invalid Syntax {} Targets".format(coltitle)])
                 table.border = True
+                rd["sheet"].write_row(rd["row"], 0, tuple(["Row Number", "Invalid Syntax {} Targets".format(coltitle)]), rd["bold"])
+                rd["row"]+=1
 
                 for x in mismatches:
-                    table.add_row([x, ",".join("'{}'".format(str(y)) for y in mismatches[x])])
+                    # Fix Row count by adding number of rows used for title
+                    table.add_row([x+title_count, ",".join("'{}'".format(str(y)) for y in mismatches[x])])
+                    rd["sheet"].write_row(rd["row"], 0, tuple([x+title_count, ",".join("'{}'".format(str(y)) for y in mismatches[x])]))
+                    rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
                 print(table)
 
-
-        def crossvalidate_with_concept_code(colnumber, coltitle):
+        def crossvalidate_with_concept_code(colnumber, coltitle, rd, title_count):
             """Helper function for validate_bia_sdg_mapping_sheet
                Common code to validate either DirectTarget or IndirectTarget
             """
@@ -115,26 +141,55 @@ def validate(worksheets, args):
 
             if len(mismatches) == 0:
                 print("\n Test for mismatched {} Targets found (for same ConceptCode): Passed".format(coltitle))
+                rd["sheet"].write(rd["row"], 0, "Test for mismatched {} Targets found (for same ConceptCode)".format(coltitle))
+                rd["sheet"].write(rd["row"], 1, "Passed", rd["green"])
+                rd["row"]+=1
+
             else:
                 print("\n Test for mismatched {} Target text found (for same ConceptCode): Failed".format(coltitle))
                 table = PrettyTable(["Concept Code", "Mismatched {} Targets".format(coltitle), "Mismatched Row Number"])
                 table.border = True
+                rd["sheet"].write(rd["row"], 0, "Test for mismatched {} Targets found (for same ConceptCode)".format(coltitle))
+                rd["sheet"].write(rd["row"], 1, "Failed", rd["red"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                rd["sheet"].write_row(rd["row"], 0, tuple(["Concept Code", "Mismatched {} Targets".format(coltitle), "Mismatched Row Number"]), rd["bold"])
+                rd["row"]+=1
 
                 for x in mismatches:
                     for items in mismatches[x]:
+                        # Fix row count by adding number of rows used for title
+                        items[1]+=title_count
                         table.add_row([x, ",".join((str(y) for y in items[0])), items[1]])
+                        rd["sheet"].write_row(rd["row"], 0, tuple([x, ",".join((str(y) for y in items[0])), items[1]]))
+                        rd["row"]+=1
                 print(table)
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+       
+        # Create Validation Report Worksheet
+        rwks = report.add_worksheet("BIA to SDG mapping")
+        bold = report.add_format({'bold': True})
+        bg_green = report.add_format({'bold': True, 'bg_color': "#c5eac6"})
+        bg_red = report.add_format({'bold': True, 'bg_color': "#efc6c6"})
+        report_dict = {"sheet": rwks, "row": 3, "bold": bold, "green": bg_green, "red": bg_red}
+        report_dict["sheet"].write(0, 0, "Test Status")
+        report_dict["sheet"].write(1, 0, None)
+        report_dict["sheet"].write(2, 0, None)    
 
         # Validate Targets Syntax
-        validate_target_format(32, "Direct")
-        validate_target_format(33, "Indirect")        
+        validate_target_format(32, "Direct", report_dict, title_count)
+        validate_target_format(33, "Indirect", report_dict, title_count)
 
         # Perform Validation Direct_Targets, Indirect_Targets column against Concept Code
-        crossvalidate_with_concept_code(32, "Direct")
-        crossvalidate_with_concept_code(33, "Indirect")
+        crossvalidate_with_concept_code(32, "Direct", report_dict, title_count)
+        crossvalidate_with_concept_code(33, "Indirect", report_dict, title_count)
 
 
-    def find_similar_text(wks, args):
+    def find_similar_text(wks, args, rd, title_count):
         """ Uses similarity.py module to find similar text
             * We remove all duplicates first
             * We store row location of all indicator text
@@ -143,15 +198,16 @@ def validate(worksheets, args):
               of the first string.
             * In deep mode, we search every sentence with other
         """
-        col = utils.get_column(wks, 5)
+        col = utils.get_column(wks, 6)
+        qacol = utils.get_column(wks, 7)
         col_line_dict = defaultdict(list)
         for n,x in enumerate(col):
-            col_line_dict[x].append(n+1)
+            col_line_dict[x].append(n+1+title_count)
 
         colunique = list(set(col))
         colunique.sort()
 
-        similar_lines = []
+        all_similar_lines = []
 
         for n1, val1 in enumerate(colunique):
             if val1 == '':
@@ -164,21 +220,63 @@ def validate(worksheets, args):
                 similar_val = similarity.cosine_sim(val1, val2)
                 if similar_val > 0.7:
                     similar_lines = [col_line_dict[val1], val1, col_line_dict[val2], val2]
-                    print("\n Row: {}\n'{}'\n----\n Row: {}\n'{}'\nSimilarity Score = {:.3f}\n\n\n ====".format(
+                    
+                    # Filter by column "Indicator QA Status". If a value exists remove it from
+                    # the list
+                        
+                    qacoltest = []
+                    qacoltest.extend(col_line_dict[val1])
+                    qacoltest.extend(col_line_dict[val2])
+                    print(qacoltest)
+                    #for x in qacoltest:
+                    #    print(qacol[x-1-title_count])
+                    allqacol_filled = all([qacol[x-1-title_count] in ('Complete', 'Needs Review') for x in qacoltest])
+                    #print(allqacol_filled)
+                    
+                    if not(allqacol_filled):
+                        all_similar_lines.append(similar_lines)
+                        #print(qacoltest)
+                        #print("ZZZZ===")
+                        #print(similar_lines)
+                        #print("=====ZZZZ")
+
+                    if len(all_similar_lines) == 1:
+                        rd["sheet"].write(rd["row"], 0, "Test for similar indicators values")
+                        rd["sheet"].write(rd["row"], 1, "Failed", rd["red"])
+                        rd["row"]+=1
+                        rd["sheet"].write(rd["row"], 0, None)
+                        rd["row"]+=1
+                        rd["sheet"].write_row(rd["row"], 0, tuple(["Rows 1", "Similar Text 1", 
+                                        "Rows 2", "Similar Text 2", "Similarity Score"]), rd["bold"])
+                        rd["row"]+=1
+                    if not(allqacol_filled):
+                        rd["sheet"].write_row(rd["row"], 0, tuple([
+                                ','.join((str(s) for s in similar_lines[0])), "'{}'".format(similar_lines[1]), 
+                                ','.join((str(s) for s in similar_lines[2])), "'{}'".format(similar_lines[3]),
+                                '{:.3f}'.format(similar_val)]))
+                        rd["row"]+=1
+
+                        print("\n Row: {}\n'{}'\n----\n Row: {}\n'{}'\nSimilarity Score = {:.3f}\n\n\n ====".format(
                             similar_lines[0], similar_lines[1],
                             similar_lines[2], similar_lines[3], similar_val))
                 else:
                     if not args.deeply_similar:
                         break
 
+                if len(all_similar_lines) == 0:
+                    print("\n\n Test for similar indicators values: Passed")
+                    rd["sheet"].write(rd["row"], 0, "Test for similar indicators values")
+                    rd["sheet"].write(rd["row"], 1, "Passed", rd["green"])
+                    rd["row"]+=1
 
-    def validate_sdg_compass_metrics_sheet(wks):
+
+    def validate_sdg_compass_metrics_sheet(wks, report, title_count):
         """Perform validate on 'SDG Compass Metrics sheet
            * Finds duplicate SDG Goals
            * Finds duplicate SDG Target
         """
     
-        def finddups(colnumber, categoryname):
+        def finddups(colnumber, categoryname, rd, title_count):
 
             mismatches = utils.finddups(wks, colnumber)
         
@@ -187,29 +285,65 @@ def validate(worksheets, args):
                 print("\n ------------")
                 print("\n {} ID -> list of (Mismatched Values, Mismatched Rows)".format(categoryname))
                 print("\n ------------")
+                # Fix row count
+                for k in mismatches:
+                    for j in mismatches[k]:
+                        j[1] += title_count
                 pprint.pprint(mismatches)
+                rd["sheet"].write(rd["row"], 0, "Test for duplicate values for {} found".format(categoryname))
+                rd["sheet"].write(rd["row"], 1, "Failed", rd["red"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                rd["sheet"].write_row(rd["row"], 0, tuple(["{} ID".format(categoryname), "Mismatched Value", "Mismatched Row Number"]), rd["bold"])
+                rd["row"]+=1
+                for k in mismatches:
+                    for j in mismatches[k]:
+                        rd["sheet"].write_row(rd["row"], 0, tuple([k, "'{}'".format(j[0]), j[1]]))
+                        rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
             else:
                 print("\n\n Test for duplicate values for {} found: Passed".format(categoryname))
-                
+                rd["sheet"].write(rd["row"], 0, "Test for duplicate values for {} found".format(categoryname))
+                rd["sheet"].write(rd["row"], 1, "Passed", rd["green"])
+                rd["row"]+=1
 
-        finddups(0, "SDG Goal")
-        finddups(1, "SDG Target")
+                
+        # Create Reporting worksheet
+        rwks = report.add_worksheet("SDG Compass Metrics")
+        bold = report.add_format({'bold': True})
+        bg_green = report.add_format({'bold': True, 'bg_color': "#c5eac6"})
+        bg_red = report.add_format({'bold': True, 'bg_color': "#efc6c6"})
+        report_dict = {"sheet": rwks, "row": 3, "bold": bold, "green": bg_green, "red": bg_red}
+        report_dict["sheet"].write(0, 0, "Test Status")
+        report_dict["sheet"].write(1, 0, None)
+        report_dict["sheet"].write(2, 0, None)    
+        
+        # Perform Validation
+        finddups(0, "SDG Goal", report_dict, title_count)
+        finddups(1, "SDG Target", report_dict, title_count)
+        
+        # Perform similarity checks for Indicator column
+        print('\n\n{0:-^60}\n'.format('Finding similar Indicator value candidates'))
+        find_similar_text(wks, args, report_dict, title_count)
 
      
     # Build source dictionary for Targets and                
     worksheet_name = "BIA to SDG mapping"
     wks = worksheets[worksheet_name]
+    title_count = ignore_title_count[worksheet_name]
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
-    validate_bia_sdg_mapping_sheet(wks)
+    validate_bia_sdg_mapping_sheet(wks, report, title_count)
 
     worksheet_name = "SDG Compass Metrics"
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
     wks = worksheets[worksheet_name]
-    validate_sdg_compass_metrics_sheet(wks)
-    
-    print('\n\n{0:-^60}\n'.format('Finding similar Indicator value candidates'))
-    metricwks = worksheets["SDG Compass Metrics"]
-    find_similar_text(metricwks, args)
+    title_count = ignore_title_count[worksheet_name]
+    print("Compass title count = {}".format(title_count))
+    validate_sdg_compass_metrics_sheet(wks, report, title_count)
 
 
 def buildgraph(sheet):
@@ -249,7 +383,7 @@ def download_and_remove_title(sheet):
         else:
             worksheet_dict[wks.title] = wks_data
 
-    return worksheet_dict
+    return worksheet_dict, wks_ignore_title_count
 
 
 def main():
@@ -292,10 +426,13 @@ def main():
         print("Using sheet: {}".format(sheet_name))
 
         # Cache GoogleSheet data to avoid bumping into API limits
-        worksheet_dict = download_and_remove_title(ssheet)
+        worksheet_dict, ignore_title_count = download_and_remove_title(ssheet)
      
         if args.action == "validate":
-            validate(worksheet_dict, args)
+            # Create validation report
+            validation_report = xlsxwriter.Workbook("Validation Report - {}.xlsx".format(datetime.date.today().isoformat()))
+            validate(worksheet_dict, args, validation_report, ignore_title_count)
+            validation_report.close()
 
     except Exception as ex:
         traceback.print_exc()
