@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-
+import pprint
 
 def get_column(matrix, colnumber):
     """Utility function to extract column from a matrix containing entire worksheet"""
@@ -36,6 +36,19 @@ def validate_target_format(wks, colnumber):
 
     return mismatches
 
+def get_valid_target_map(wks, colnumber):
+    
+    syntax = re.compile("^\d{1,2}\.([0-9]{1,2}|[a-z])$")
+    valid_target_map = {}
+    
+    for n,x in enumerate(wks):
+        target_list = get_target_list(wks, n, colnumber)
+        valid_list = [a for a in target_list if syntax.match(a) is not None]
+        if wks[n][0] not in valid_target_map:
+            valid_target_map[wks[n][0]] = valid_list
+        
+    return valid_target_map
+
 
 def finddups(wks, colnumber):
 
@@ -54,3 +67,39 @@ def finddups(wks, colnumber):
     mismatches = { k:mismatches[k] for k in mismatches if k in remove}
 
     return mismatches
+
+
+def build_finddups_report(wks, colnumber, categoryname, rd, title_count):
+
+    mismatches = finddups(wks, colnumber)
+        
+    if len(mismatches) > 0:
+        print("\n\n Test for duplicate values for {} found: Failed".format(categoryname))
+        print("\n ------------")
+        print("\n {} ID -> list of (Mismatched Values, Mismatched Rows)".format(categoryname))
+        print("\n ------------")
+        # Fix row count
+        for k in mismatches:
+            for j in mismatches[k]:
+                j[1] += title_count
+        pprint.pprint(mismatches)
+        rd["sheet"].write(rd["row"], 0, "Test for duplicate values for {} found".format(categoryname))
+        rd["sheet"].write(rd["row"], 1, "Failed", rd["red"])
+        rd["row"]+=1
+        rd["sheet"].write(rd["row"], 0, None)
+        rd["row"]+=1
+        rd["sheet"].write_row(rd["row"], 0, tuple(["{} ID".format(categoryname), "Mismatched Value", "Mismatched Row Number"]), rd["bold"])
+        rd["row"]+=1
+        for k in mismatches:
+            for j in mismatches[k]:
+                rd["sheet"].write_row(rd["row"], 0, tuple([k, "'{}'".format(j[0]), j[1]]))
+                rd["row"]+=1
+        rd["sheet"].write(rd["row"], 0, None)
+        rd["row"]+=1
+        rd["sheet"].write(rd["row"], 0, None)
+        rd["row"]+=1
+    else:
+        print("\n\n Test for duplicate values for {} found: Passed".format(categoryname))
+        rd["sheet"].write(rd["row"], 0, "Test for duplicate values for {} found".format(categoryname))
+        rd["sheet"].write(rd["row"], 1, "Passed", rd["green"])
+        rd["row"]+=1
