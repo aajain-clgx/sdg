@@ -66,7 +66,7 @@ def validate(worksheets, args, report, ignore_title_count):
     """Perform various cross validations on worksheets 
         in a spreadsheet and generate output a report"""
  
-    def validate_bia_sdg_mapping_sheet(wks, reportsheet_dict, title_count):
+    def validate_bia_sdg_mapping_sheet(wks, reportsheet_dict, title_count, wks_target_mapping):
         """Performs validation on 'BIA to SDG mapping' sheet
            Validates that we have identical DirectTargets and IndirectTargets
            for rows with same Concept Code.
@@ -169,6 +169,79 @@ def validate(worksheets, args, report, ignore_title_count):
                 rd["row"]+=1
                 rd["sheet"].write(rd["row"], 0, None)
                 rd["row"]+=1
+
+        def missing_concept_code_from_target_sheet(rd):
+
+            concept_code = set(utils.get_column(wks, 0))
+            concept_code_from_target_sheet = set(utils.get_column(wks_target_mapping, 0))
+
+            missing_in_sheet_1 = concept_code_from_target_sheet - concept_code
+            missing_in_sheet_2 = concept_code - concept_code_from_target_sheet
+
+
+            if len(missing_in_sheet_1)  ==  0:
+                print("\n Test for Concept Code missing from 'BIA to SDG Target Mapping' worksheet: Passed. Good Job!")
+                rd["sheet"].write(rd["row"], 0, "Test for Concept Code missing from 'BIA to SDG Target Mapping' worksheet")
+                rd["sheet"].write(rd["row"], 1, "Passed. Good Job!", rd["green"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+            else:
+                print("\nTest for Concept Code missing from 'BIA to SDG Target Mapping' worksheet: Failed")
+                rd["sheet"].write(rd["row"], 0, "Test for Concept Code missing from 'BIA to SDG Target Mapping' worksheet")
+                rd["sheet"].write(rd["row"], 1, "Failed", rd["red"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+
+                table = PrettyTable(["Concept Codes"])
+                table.border = True
+                rd["sheet"].write_row(rd["row"], 0, tuple(["Concept Code"]), rd["bold"])
+                rd["row"]+=1
+
+                for x in missing_in_sheet_1:
+                    # Fix Row count by adding number of rows used for title
+                    table.add_row([x])
+                    rd["sheet"].write_row(rd["row"], 0, tuple([x]))
+                    rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                print(table)
+
+
+            if len(missing_in_sheet_2)  ==  0:
+                print("\n Test for Concept Code from this sheet but missing in 'BIA to SDG Target Mapping' worksheet: Passed. Good Job!")
+                rd["sheet"].write(rd["row"], 0, "Test for Concept Code from this sheet but missing in 'BIA to SDG Target Mapping' worksheet")
+                rd["sheet"].write(rd["row"], 1, "Passed. Good Job!", rd["green"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+            else:
+                print("\nTest for Concept Code from this sheet but missing in 'BIA to SDG Target Mapping' worksheet: Failed")
+                rd["sheet"].write(rd["row"], 0, "Test for Concept Code from this sheet but missing in 'BIA to SDG Target Mapping' worksheet")
+                rd["sheet"].write(rd["row"], 1, "Failed", rd["red"])
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+
+                table = PrettyTable(["Concept Codes"])
+                table.border = True
+                rd["sheet"].write_row(rd["row"], 0, tuple(["Concept Code"]), rd["bold"])
+                rd["row"]+=1
+
+                for x in missing_in_sheet_2:
+                    # Fix Row count by adding number of rows used for title
+                    table.add_row([x])
+                    rd["sheet"].write_row(rd["row"], 0, tuple([x]))
+                    rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                rd["sheet"].write(rd["row"], 0, None)
+                rd["row"]+=1
+                print(table)
+
        
         # Create Validation Report Worksheet
         rwks = report.add_worksheet("BIA to SDG mapping")
@@ -181,12 +254,15 @@ def validate(worksheets, args, report, ignore_title_count):
         report_dict["sheet"].write(2, 0, None)    
 
         # Validate Targets Syntax
-        validate_target_format(32, "Direct", report_dict, title_count)
-        validate_target_format(33, "Indirect", report_dict, title_count)
+        validate_target_format(33, "Direct", report_dict, title_count)
+        validate_target_format(34, "Indirect", report_dict, title_count)
 
         # Perform Validation Direct_Targets, Indirect_Targets column against Concept Code
-        crossvalidate_with_concept_code(32, "Direct", report_dict, title_count)
-        crossvalidate_with_concept_code(33, "Indirect", report_dict, title_count)
+        crossvalidate_with_concept_code(33, "Direct", report_dict, title_count)
+        crossvalidate_with_concept_code(34, "Indirect", report_dict, title_count)
+        
+        # Missing concept codes from target sheet
+        missing_concept_code_from_target_sheet(report_dict)
 
 
     def find_similar_text(wks, args, rd, title_count):
@@ -397,16 +473,14 @@ def validate(worksheets, args, report, ignore_title_count):
         rd["sheet"].write(rd["row"], 0, None)
         rd["row"]+=1
 
-        pprint.pprint(business_theme_map)
-        
-        
      
     # Build source dictionary for Targets and                
     worksheet_name = "BIA to SDG mapping"
     wks = worksheets[worksheet_name]
+    wks_target_mapping = worksheets["BIA to SDG Target Mapping"]
     title_count = ignore_title_count[worksheet_name]
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
-    validate_bia_sdg_mapping_sheet(wks, report, title_count)
+    validate_bia_sdg_mapping_sheet(wks, report, title_count, wks_target_mapping)
 
     worksheet_name = "SDG Compass Metrics"
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
@@ -428,7 +502,7 @@ def validate(worksheets, args, report, ignore_title_count):
     build_business_to_indicator_map(wks, report, title_count)
 
 
-def sync(writesheet, worksheets, title_count):
+def sync(writesheet, worksheets, title_count, direct_column):
     """Build a python graph representation of data"""
 
     def graph(): return defaultdict(graph)
@@ -447,25 +521,38 @@ def sync(writesheet, worksheets, title_count):
         
         return target_map
 
-    def sync_table(target_map, valid_target_map):
+    def sync_table(target_map):
 
         update_cells = []
         target_text_map = build_target_map()
-        valid_target_dict = utils.get_valid_target_map(worksheets["BIA to SDG mapping"], 32)
-        
+        colnumber = 33 if direct_column else 34
+        valid_target_dict = utils.get_valid_target_map(worksheets["BIA to SDG mapping"], colnumber)
+        write_row_num = title_count
         for row in worksheets["BIA to SDG Target Mapping"]:
-            targets = valid_target_dict[row[0]]
-            if len(targets) > 0:
-                # Add to cells
-                pass    
             
+            writetarget = row[0]
+            if writetarget in valid_target_dict:
+                targets = valid_target_dict[writetarget]
+            else:
+                print("Not Found: {}".format(writetarget))
+                continue
 
-        pass
+            padding = [''] * (20 - len(targets))
+            targets.extend(padding)
+            write_row_num += 1                        
         
-        
+            for n in range(len(targets)):
+                if targets[n] == '':
+                    update_cells.append(gspread.Cell(write_row_num, 13 + n, ''))
+                else:
+                    update_cells.append(gspread.Cell(write_row_num, 13 + n, target_text_map[targets[n]]))
+                    
+        # Update all cells
+        writesheet.update_cells(update_cells)
+
 
     tmap = build_target_map()
-    #pprint.pprint(valid_target_dict)
+    sync_table(tmap)
     
 
 def download_and_remove_title(sheet):
@@ -548,7 +635,7 @@ def main():
             validate(worksheet_dict, args, validation_report, ignore_title_count)
             validation_report.close()
         elif args.action == "sync":
-            sync(ssheet, worksheet_dict, ignore_title_count["BIA to SDG Target Mapping"])
+            sync(ssheet.worksheet("BIA to SDG Target Mapping"), worksheet_dict, ignore_title_count["BIA to SDG Target Mapping"], True)
     
 
     except Exception as ex:
