@@ -425,8 +425,8 @@ def validate(worksheets, args, report, ignore_title_count):
         report_dict["sheet"].write(2, 0, None)    
         
         # Perform Validation
-        utils.build_finddups_report(wks, 0, "SDG Goals", report_dict, title_count)
-        utils.build_finddups_report(wks, 1, "SDG Target", report_dict, title_count)
+        utils.build_finddups_report(wks, 1, "SDG Goals", report_dict, title_count)
+        utils.build_finddups_report(wks, 2, "SDG Target", report_dict, title_count)
 
 
     def build_business_to_indicator_map(wks, report, title_count):
@@ -444,9 +444,9 @@ def validate(worksheets, args, report, ignore_title_count):
         business_theme_map = {}
 
         for n, row in enumerate(wks):
-            theme = row[2]
-            cesr_indicator = row[6]
-            target = row[1]
+            theme = row[4]
+            cesr_indicator = row[5]
+            target = row[2]
             
             if theme in business_theme_map:
                 if cesr_indicator in business_theme_map[theme]:
@@ -514,7 +514,7 @@ def sync(writesheet, worksheets, title_count, direct_column):
         target_map = {}
         wks = worksheets["SDG Targets"]
         
-        target_col = utils.get_column(wks, 1)
+        target_col = utils.get_column(wks, 2)
         for cell in target_col:
             strsplit = cell.split()
             target_map[strsplit[0]] = cell
