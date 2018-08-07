@@ -274,8 +274,8 @@ def validate(worksheets, args, report, ignore_title_count):
               of the first string.
             * In deep mode, we search every sentence with other
         """
-        col = utils.get_column(wks, 6)
-        qacol = utils.get_column(wks, 7)
+        col = utils.get_column(wks, 5)
+        qacol = utils.get_column(wks, 10)
         col_line_dict = defaultdict(list)
         for n,x in enumerate(col):
             col_line_dict[x].append(n+1+title_count)
@@ -351,8 +351,8 @@ def validate(worksheets, args, report, ignore_title_count):
                     rd["row"]+=1
 
 
-    def validate_sdg_compass_metrics_sheet(wks, report, title_count):
-        """Perform validate on 'SDG Compass Metrics sheet
+    def validate_sdg_compass_indicators_sheet(wks, report, title_count):
+        """Perform validate on 'SDG Compass Indicator sheet
            * Finds duplicate SDG Goals
            * Finds duplicate SDG Target
         """
@@ -394,7 +394,7 @@ def validate(worksheets, args, report, ignore_title_count):
 
                 
         # Create Reporting worksheet
-        rwks = report.add_worksheet("SDG Compass Metrics")
+        rwks = report.add_worksheet("SDG Compass Indicators")
         bold = report.add_format({'bold': True})
         bg_green = report.add_format({'bold': True, 'bg_color': "#c5eac6"})
         bg_red = report.add_format({'bold': True, 'bg_color': "#efc6c6"})
@@ -404,8 +404,8 @@ def validate(worksheets, args, report, ignore_title_count):
         report_dict["sheet"].write(2, 0, None)    
         
         # Perform Validation
-        finddups(0, "SDG Goal", report_dict, title_count)
-        finddups(1, "SDG Target", report_dict, title_count)
+        finddups(1, "SDG Goal", report_dict, title_count)
+        finddups(2, "SDG Target", report_dict, title_count)
         
         # Perform similarity checks for Indicator column
         print('\n\n{0:-^60}\n'.format('Finding similar Indicator value candidates'))
@@ -482,11 +482,11 @@ def validate(worksheets, args, report, ignore_title_count):
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
     validate_bia_sdg_mapping_sheet(wks, report, title_count, wks_target_mapping)
 
-    worksheet_name = "SDG Compass Metrics"
+    worksheet_name = "SDG Compass Indicators"
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
     wks = worksheets[worksheet_name]
     title_count = ignore_title_count[worksheet_name]
-    validate_sdg_compass_metrics_sheet(wks, report, title_count)
+    validate_sdg_compass_indicators_sheet(wks, report, title_count)
 
     worksheet_name = "SDG Targets"
     print('\n\n{0:-^60}\n'.format('Validate worksheet: {}'.format(worksheet_name)))
@@ -495,7 +495,7 @@ def validate(worksheets, args, report, ignore_title_count):
     validate_sdg_target(wks, report, title_count)
 
 
-    worksheet_name = "SDG Compass Metrics"
+    worksheet_name = "SDG Compass Indicators"
     print('\n\n{0:-^60}\n'.format('Build Business Theme -> (Indicator, Target) Map in worksheet: {}'.format(worksheet_name)))
     wks = worksheets[worksheet_name]
     title_count = ignore_title_count[worksheet_name]
@@ -525,21 +525,19 @@ def sync(writesheet, worksheets, title_count, direct_column):
 
         update_cells = []
         target_text_map = build_target_map()
-        colnumber = 33 if direct_column else 34
+        colnumber = 33 #if direct_column else 34
         valid_target_dict = utils.get_valid_target_map(worksheets["BIA to SDG mapping"], colnumber)
         write_row_num = title_count
         for row in worksheets["BIA to SDG Target Mapping"]:
             
             writetarget = row[0]
+            targets = []
             if writetarget in valid_target_dict:
                 targets = valid_target_dict[writetarget]
-            else:
-                print("Not Found: {}".format(writetarget))
-                continue
 
             padding = [''] * (20 - len(targets))
             targets.extend(padding)
-            write_row_num += 1                        
+            write_row_num += 1
         
             for n in range(len(targets)):
                 if targets[n] == '':
@@ -567,7 +565,7 @@ def download_and_remove_title(sheet):
     wks_ignore_title_count["BIA to SDG mapping"] = 2
     wks_ignore_title_count["BIA to SDG Target Mapping"] = 2
     wks_ignore_title_count["SDG Targets"] = 2
-    wks_ignore_title_count["SDG Compass Metrics"] = 1
+    wks_ignore_title_count["SDG Compass Indicators"] = 1
 
     worksheet_dict = {}
     for wks in sheet.worksheets():
@@ -595,13 +593,6 @@ def main():
     )
 
     parser.add_argument(
-        "--live",
-        action = "store_true",
-        default = False,
-        help = "If specified, use spreadsheet version shared by everyone"
-    )
-
-    parser.add_argument(
         "--all-similar",
         action = "store_true",
         default = False,
@@ -621,8 +612,7 @@ def main():
 
         # Initialize Google and open Spreadsheet        
         initialize_google()
-        sheet_name = "BIA V5 SDG Alignment as of 05-2018 WORKING DRAFT.xlsx" \
-                     if args.live else "BIA V5 SDG Alignment"
+        sheet_name = "BIA V5 SDG Alignment as of 05-2018 WORKING DRAFT.xlsx"
         ssheet = open_spreadsheet(sheet_name)
         print("Using sheet: {}".format(sheet_name))
 
