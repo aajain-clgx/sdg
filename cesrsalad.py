@@ -517,7 +517,7 @@ def sync(writesheet, worksheets, title_count, direct_column):
         target_col = utils.get_column(wks, 2)
         for cell in target_col:
             strsplit = cell.split()
-            target_map[strsplit[0]] = cell
+            target_map[strsplit[0].strip()] = cell
         
         return target_map
 
@@ -564,7 +564,7 @@ def download_and_remove_title(sheet):
     wks_ignore_title_count = {}
     wks_ignore_title_count["BIA to SDG mapping"] = 2
     wks_ignore_title_count["BIA to SDG Target Mapping"] = 2
-    wks_ignore_title_count["SDG Targets"] = 2
+    wks_ignore_title_count["SDG Targets"] = 1
     wks_ignore_title_count["SDG Compass Indicators"] = 1
 
     worksheet_dict = {}
