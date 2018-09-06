@@ -531,19 +531,21 @@ def sync(writesheet, worksheets, title_count, direct_column):
         for row in worksheets["BIA to SDG Target Mapping"]:
             
             writetarget = row[0]
+        
             targets = []
             if writetarget in valid_target_dict:
                 targets = valid_target_dict[writetarget]
-
             padding = [''] * (20 - len(targets))
             targets.extend(padding)
+            
             write_row_num += 1
         
             for n in range(len(targets)):
+                
                 if targets[n] == '':
-                    update_cells.append(gspread.Cell(write_row_num, 13 + n, ''))
+                    update_cells.append(gspread.Cell(write_row_num, 12 + n, ''))
                 else:
-                    update_cells.append(gspread.Cell(write_row_num, 13 + n, target_text_map[targets[n]]))
+                    update_cells.append(gspread.Cell(write_row_num, 12 + n, target_text_map[targets[n]]))
                     
         # Update all cells
         writesheet.update_cells(update_cells)
