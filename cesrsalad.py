@@ -473,6 +473,52 @@ def validate(worksheets, args, report, ignore_title_count):
         rd["sheet"].write(rd["row"], 0, None)
         rd["row"]+=1
 
+    def unmapped_indicators_map(wks_indicator, title_count, wks_mapping, title_count2, report):
+        
+        import pdb
+        # Create Reporting worksheet
+        rwks = report.add_worksheet("Unmapped Indicators")
+        bold = report.add_format({'bold': True})
+        bg_green = report.add_format({'bold': True, 'bg_color': "#c5eac6"})
+        bg_red = report.add_format({'bold': True, 'bg_color': "#efc6c6"})
+        rd = {"sheet": rwks, "row": 3, "bold": bold, "green": bg_green, "red": bg_red}
+        rd["sheet"].write(0, 0, "Unmapped Indicators", rd["bold"])
+        rd["sheet"].write(1, 0, None)
+        rd["sheet"].write(2, 0, None)
+        
+        # Build Mapping (Indicator -> BIA)
+        # BIA_to_SDG: Look at column AM onwards
+        ind_set = set()
+        ind_dict = {}
+        for _, row in enumerate(wks_indicator):
+            ind_set.add(row[0])
+            ind_dict[row[0]] = row
+
+        for n, row in enumerate(wks_mapping):
+            for col in range(38, 58, 2):
+                if len(row[col]) > 0:
+                    try:
+                        val = int(row[col])
+                        if row[col] in ind_set:
+                            ind_set.remove(row[col])
+                    except Exception as ex:
+                        print("Warning: Failure parsing number at line {0}: {1}".format(n + title_count2, row[col]))       
+        
+        ind_list = list(ind_set)
+        ind_list.sort(key=int)
+        print("Unmapped Indicators")
+        print(ind_list)
+        print("length = {}".format(len(ind_set)))
+
+        rd["sheet"].write_row(rd["row"], 0, tuple(["Row ID","SDG Goal","SDG Target","Business Theme","CESR-edited Business Theme", 
+                "CESR INDICATOR DESCRIPTION","Type of Indicator","Indicator Source", "UN Indicator Description","Indicator ID", "Date", "Indicator Usefulness Status"]), rd["bold"])
+        rd["row"]+=1
+
+        for rowid in ind_list:
+            rowcols = ind_dict[rowid]
+            rowline = ["{}".format(col) for n, col in enumerate(rowcols) if n < 12]
+            rd["sheet"].write_row(rd["row"], 0, tuple(rowline)) 
+            rd["row"] += 1
      
     # Build source dictionary for Targets and                
     worksheet_name = "BIA to SDG mapping"
@@ -500,6 +546,14 @@ def validate(worksheets, args, report, ignore_title_count):
     wks = worksheets[worksheet_name]
     title_count = ignore_title_count[worksheet_name]
     build_business_to_indicator_map(wks, report, title_count)
+
+    worksheet_name = "SDG Compass Indicators"
+    print('\n\n{0:-^60}\n'.format('Build Unmapped Indicators Map in worksheet: {}'.format(worksheet_name)))
+    wks = worksheets[worksheet_name]
+    title_count = ignore_title_count[worksheet_name]
+    wks2 = worksheets["BIA to SDG mapping"]
+    title_count_2 = ignore_title_count["BIA to SDG mapping"]
+    unmapped_indicators_map(wks, title_count, wks2, title_count_2, report)
 
 
 def sync(writesheet, worksheets, title_count, direct_column):
@@ -564,8 +618,8 @@ def download_and_remove_title(sheet):
     # For processing, we igore these rows
 
     wks_ignore_title_count = {}
-    wks_ignore_title_count["BIA to SDG mapping"] = 2
-    wks_ignore_title_count["BIA to SDG Target Mapping"] = 2
+    wks_ignore_title_count["BIA to SDG mapping"] = 1
+    wks_ignore_title_count["BIA to SDG Target Mapping"] = 1
     wks_ignore_title_count["SDG Targets"] = 1
     wks_ignore_title_count["SDG Compass Indicators"] = 1
 
