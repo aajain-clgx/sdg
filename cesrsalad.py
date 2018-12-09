@@ -556,6 +556,55 @@ def validate(worksheets, args, report, ignore_title_count):
     unmapped_indicators_map(wks, title_count, wks2, title_count_2, report)
 
 
+def unmap(livesheet, worksheets, title_report_count):
+    """Transpose mapped and unmapped indicators column in the report sheet"""
+
+    def getmax_count(wks, col):
+        maxcount = 0
+        for x in wks:
+            l = [a.strip() for a in x[col].splitlines()]
+            maxcount = max(maxcount, len(l))
+        return maxcount
+
+    sheetname = "Unmapped Indicators"
+    map_col = 14
+    unmap_col = 15
+    max_mapped_count = getmax_count(worksheets[sheetname], map_col)
+    max_unmapped_count = getmax_count(worksheets[sheetname], unmap_col)
+    title_count = title_report_count[sheetname]
+    start_map_col = map_col + 8
+    start_unmap_col = start_map_col + max_mapped_count
+    writesheet = livesheet.worksheet(sheetname)
+
+    update_cells = []
+    write_row_num = title_count
+
+    # Write Titles
+    for n in range(max_mapped_count):
+        update_cells.append(gspread.Cell(write_row_num, start_map_col + n, "Mapped_{}".format(n+1)))
+    for n in range(max_unmapped_count):
+        update_cells.append(gspread.Cell(write_row_num, start_unmap_col + n, "Unmapped_{}".format(n+1)))
+        
+    # Write Values
+    for n, row in enumerate(worksheets[sheetname]):
+        map_vals = [a.strip() for a in row[map_col].splitlines()]
+        padding = [''] * (max_mapped_count - len(map_vals))
+        map_vals.extend(padding)
+
+        unmap_vals = [a.strip() for a in row[unmap_col].splitlines()]
+        padding = [''] * (max_unmapped_count - len(unmap_vals))
+        unmap_vals.extend(padding)
+
+        write_row_num += 1
+        
+        for num in range(max_mapped_count):
+            update_cells.append(gspread.Cell(write_row_num, start_map_col + num, map_vals[num]))
+        for num in range(max_unmapped_count):
+            update_cells.append(gspread.Cell(write_row_num, start_unmap_col + num, unmap_vals[num]))
+
+    writesheet.update_cells(update_cells)
+        
+
 def sync(writesheet, worksheets, title_count, direct_column):
     """Build a python graph representation of data"""
 
@@ -622,6 +671,7 @@ def download_and_remove_title(sheet):
     wks_ignore_title_count["BIA to SDG Target Mapping"] = 1
     wks_ignore_title_count["SDG Targets"] = 1
     wks_ignore_title_count["SDG Compass Indicators"] = 1
+    wks_ignore_title_count["Unmapped Indicators"] = 3
 
     worksheet_dict = {}
     for wks in sheet.worksheets():
@@ -644,7 +694,7 @@ def main():
     parser.add_argument(
         "action",
         action = "store",
-        choices = ["validate", "sync"],
+        choices = ["validate", "sync", "unmap"],
         help = "Pass one of these action for script to perform"
     )
 
@@ -661,6 +711,13 @@ def main():
         default = False,
         help = "Perform exhaustive similarity search between text. Warning: Takes long time"
     )
+
+    parser.add_argument(
+        "--live",
+        action = "store_true",
+        default = False,
+        help = "Perform against 'live' Validation report"
+    )
     
     args = parser.parse_args()
 
@@ -670,19 +727,30 @@ def main():
         initialize_google()
         sheet_name = "BIA V5 SDG Alignment as of 05-2018 WORKING DRAFT.xlsx"
         ssheet = open_spreadsheet(sheet_name)
-        print("Using sheet: {}".format(sheet_name))
 
         # Cache GoogleSheet data to avoid bumping into API limits
         worksheet_dict, ignore_title_count = download_and_remove_title(ssheet)
      
         if args.action == "validate":
+            print("Using sheet: {}".format(sheet_name))
             # Create validation report
             validation_report = xlsxwriter.Workbook("Validation Report - {}.xlsx".format(datetime.date.today().isoformat()))
             validate(worksheet_dict, args, validation_report, ignore_title_count)
             validation_report.close()
         elif args.action == "sync":
+            print("Using sheet: {}".format(sheet_name))
             sync(ssheet.worksheet("BIA to SDG Target Mapping"), worksheet_dict, ignore_title_count["BIA to SDG Target Mapping"], True)
-    
+        elif args.action == "unmap":
+            global GOOGLE_CREDENTIALS
+            report_sheet = None
+            if args.live:
+                report_sheet = GOOGLE_CREDENTIALS.open_by_url("https://docs.google.com/spreadsheets/d/1Sy5rGuy-321ohe7kSWf0meFa_4zDyGurbVVOCxBhJ4E/edit#gid=403241877")
+            else:
+                report_sheet = GOOGLE_CREDENTIALS.open_by_url("https://docs.google.com/spreadsheets/d/13K05CWTK2LaEv2TgG3KdCr1XIUjq6UNpCbG7UOOAytk")
+            print("Opened report sheet")
+            reportsheet_dict, ignore_report_title_count = download_and_remove_title(report_sheet)
+            unmap(report_sheet, reportsheet_dict, ignore_report_title_count)
+            print("Finished transposing mapped/unmapped columns")
 
     except Exception as ex:
         traceback.print_exc()
