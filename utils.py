@@ -21,7 +21,7 @@ def get_target_list(worksheet, row, col):
     return build_target_list(colval)
 
 def validate_target_format(wks, colnumber):
-    """Helper function to validate the syntax of a target specified in 
+    """Helper function to validate the syntax of a target specified in
         Direct or Indirect Target column
         The format should be like digit.digit or digit.alpha
     """
@@ -37,16 +37,16 @@ def validate_target_format(wks, colnumber):
     return mismatches
 
 def get_valid_target_map(wks, colnumber):
-    
+
     syntax = re.compile("^\d{1,2}\.([0-9]{1,2}|[a-z])$")
     valid_target_map = {}
-    
+
     for n,x in enumerate(wks):
         target_list = get_target_list(wks, n, colnumber)
         valid_list = [a for a in target_list if syntax.match(a) is not None]
         if wks[n][0] not in valid_target_map:
             valid_target_map[wks[n][0]] = valid_list
-        
+
     return valid_target_map
 
 
@@ -72,7 +72,7 @@ def finddups(wks, colnumber):
 def build_finddups_report(wks, colnumber, categoryname, rd, title_count):
 
     mismatches = finddups(wks, colnumber)
-        
+
     if len(mismatches) > 0:
         print("\n\n Test for duplicate values for {} found: Failed".format(categoryname))
         print("\n ------------")

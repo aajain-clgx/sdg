@@ -36,11 +36,11 @@ GOOGLE_CREDENTIALS = None
 
 def initialize_google():
     """Initialize Google API using client credentials
-       Store client oauth json credentials file in 
+       Store client oauth json credentials file in
        CLIENT_CREDENTIALS folder
        To setup oauth: http://gspread.readthedocs.io/en/latest/oauth2.html
     """
-    
+
     # Validate credentials client file
     client_cred_file = os.path.expanduser(CLIENT_CREDENTIALS)
     if os.path.exists(client_cred_file):
@@ -50,10 +50,10 @@ def initialize_google():
         cred =  ServiceAccountCredentials.from_json_keyfile_name(client_cred_file, scope)
         global GOOGLE_CREDENTIALS
         GOOGLE_CREDENTIALS = gspread.authorize(cred)
-        
+
     else:
         raise Exception("Please create Google OAUTH client and copy it in '{}'".format(CLIENT_CREDENTIALS))
-    
+
 
 def open_spreadsheet(spreadsheet_name):
     """Open spreadsheet by name and return"""
@@ -63,30 +63,30 @@ def open_spreadsheet(spreadsheet_name):
 
 
 def validate(worksheets, args, report, ignore_title_count):
-    """Perform various cross validations on worksheets 
+    """Perform various cross validations on worksheets
         in a spreadsheet and generate output a report"""
- 
+
     def validate_bia_sdg_mapping_sheet(wks, reportsheet_dict, title_count, wks_target_mapping):
         """Performs validation on 'BIA to SDG mapping' sheet
            Validates that we have identical DirectTargets and IndirectTargets
            for rows with same Concept Code.
 
            Assumptions:
-            * First two rows are ignored by the script since they contain column title. 
+            * First two rows are ignored by the script since they contain column title.
               If you add additional title row, script will need to be updated.
-            * DirectTargets/IndirectTargets columns: If the line begins with alphabet, 
+            * DirectTargets/IndirectTargets columns: If the line begins with alphabet,
               it is ignored by script. If it begins with a numerical, it is used for
               building graph mapping
         """
-       
+
         def validate_target_format(colnumber, coltitle, rd, title_count):
-            """Helper function to validate the syntax of a target specified in 
+            """Helper function to validate the syntax of a target specified in
                Direct or Indirect Target column
                The format should be like digit.digit or digit.alpha
             """
 
             mismatches = utils.validate_target_format(wks, colnumber)
-            
+
             if len(mismatches) == 0:
                 print("\n Test invalid syntax for {} Targets: Passed. Good Job!".format(coltitle))
                 rd["sheet"].write(rd["row"], 0, "Test invalid syntax for {} Targets".format(coltitle))
@@ -125,7 +125,7 @@ def validate(worksheets, args, report, ignore_title_count):
 
             concepts_dict = {}
             mismatches = defaultdict(list)
-                            
+
             for n,x in enumerate(wks):
                 # Ignore first two lines since they contain titles
                 target_list = utils.get_target_list(wks,n, colnumber)
@@ -242,7 +242,7 @@ def validate(worksheets, args, report, ignore_title_count):
                 rd["row"]+=1
                 print(table)
 
-       
+
         # Create Validation Report Worksheet
         rwks = report.add_worksheet("BIA to SDG mapping")
         bold = report.add_format({'bold': True})
@@ -251,7 +251,7 @@ def validate(worksheets, args, report, ignore_title_count):
         report_dict = {"sheet": rwks, "row": 3, "bold": bold, "green": bg_green, "red": bg_red}
         report_dict["sheet"].write(0, 0, "Test Status")
         report_dict["sheet"].write(1, 0, None)
-        report_dict["sheet"].write(2, 0, None)    
+        report_dict["sheet"].write(2, 0, None)
 
         # Validate Targets Syntax
         validate_target_format(33, "Direct", report_dict, title_count)
@@ -260,7 +260,7 @@ def validate(worksheets, args, report, ignore_title_count):
         # Perform Validation Direct_Targets, Indirect_Targets column against Concept Code
         crossvalidate_with_concept_code(33, "Direct", report_dict, title_count)
         crossvalidate_with_concept_code(34, "Indirect", report_dict, title_count)
-        
+
         # Missing concept codes from target sheet
         missing_concept_code_from_target_sheet(report_dict)
 
@@ -297,10 +297,10 @@ def validate(worksheets, args, report, ignore_title_count):
                 similar_val = similarity.cosine_sim(val1, val2)
                 if similar_val > 0.7:
                     similar_lines = [col_line_dict[val1], val1, col_line_dict[val2], val2]
-                    
+
                     # Filter by column "Indicator QA Status". If a value exists remove it from
                     # the list
-                        
+
                     qacoltest = []
                     qacoltest.extend(col_line_dict[val1])
                     qacoltest.extend(col_line_dict[val2])
@@ -308,10 +308,10 @@ def validate(worksheets, args, report, ignore_title_count):
                     #    print(qacol[x-1-title_count])
                     allqacol_filled = all([qacol[x-1-title_count] in ('Complete', 'Needs Review') for x in qacoltest])
                     #print(allqacol_filled)
-                    
+
                     # If this flag is set, do not filter by QA column
                     if args.all_similar:
-                        allqacol_filled = False                    
+                        allqacol_filled = False
 
                     if not(allqacol_filled):
                         all_similar_lines.append(similar_lines)
@@ -326,13 +326,13 @@ def validate(worksheets, args, report, ignore_title_count):
                         rd["row"]+=1
                         rd["sheet"].write(rd["row"], 0, None)
                         rd["row"]+=1
-                        rd["sheet"].write_row(rd["row"], 0, tuple(["Rows 1", "Similar Text 1", 
+                        rd["sheet"].write_row(rd["row"], 0, tuple(["Rows 1", "Similar Text 1",
                                         "Rows 2", "Similar Text 2", "Similarity Score"]), rd["bold"])
                         rd["row"]+=1
                         header_written = True
                     if not(allqacol_filled):
                         rd["sheet"].write_row(rd["row"], 0, tuple([
-                                ','.join((str(s) for s in similar_lines[0])), "'{}'".format(similar_lines[1]), 
+                                ','.join((str(s) for s in similar_lines[0])), "'{}'".format(similar_lines[1]),
                                 ','.join((str(s) for s in similar_lines[2])), "'{}'".format(similar_lines[3]),
                                 '{:.3f}'.format(similar_val)]))
                         rd["row"]+=1
@@ -356,11 +356,11 @@ def validate(worksheets, args, report, ignore_title_count):
            * Finds duplicate SDG Goals
            * Finds duplicate SDG Target
         """
-    
+
         def finddups(colnumber, categoryname, rd, title_count):
 
             mismatches = utils.finddups(wks, colnumber)
-        
+
             if len(mismatches) > 0:
                 print("\n\n Test for duplicate values for {} found: Failed".format(categoryname))
                 print("\n ------------")
@@ -392,7 +392,7 @@ def validate(worksheets, args, report, ignore_title_count):
                 rd["sheet"].write(rd["row"], 1, "Passed. Good Job!", rd["green"])
                 rd["row"]+=1
 
-                
+
         # Create Reporting worksheet
         rwks = report.add_worksheet("SDG Compass Indicators")
         bold = report.add_format({'bold': True})
@@ -401,19 +401,19 @@ def validate(worksheets, args, report, ignore_title_count):
         report_dict = {"sheet": rwks, "row": 3, "bold": bold, "green": bg_green, "red": bg_red}
         report_dict["sheet"].write(0, 0, "Test Status")
         report_dict["sheet"].write(1, 0, None)
-        report_dict["sheet"].write(2, 0, None)    
-        
+        report_dict["sheet"].write(2, 0, None)
+
         # Perform Validation
         finddups(1, "SDG Goal", report_dict, title_count)
         finddups(2, "SDG Target", report_dict, title_count)
-        
+
         # Perform similarity checks for Indicator column
         print('\n\n{0:-^60}\n'.format('Finding similar Indicator value candidates'))
         find_similar_text(wks, args, report_dict, title_count)
 
-    
+
     def validate_sdg_target(wks, report, title_count):
-        
+
         # Create Reporting worksheet
         rwks = report.add_worksheet("SDG Targets")
         bold = report.add_format({'bold': True})
@@ -422,8 +422,8 @@ def validate(worksheets, args, report, ignore_title_count):
         report_dict = {"sheet": rwks, "row": 3, "bold": bold, "green": bg_green, "red": bg_red}
         report_dict["sheet"].write(0, 0, "Test Status")
         report_dict["sheet"].write(1, 0, None)
-        report_dict["sheet"].write(2, 0, None)    
-        
+        report_dict["sheet"].write(2, 0, None)
+
         # Perform Validation
         utils.build_finddups_report(wks, 1, "SDG Goals", report_dict, title_count)
         utils.build_finddups_report(wks, 2, "SDG Target", report_dict, title_count)
@@ -447,7 +447,7 @@ def validate(worksheets, args, report, ignore_title_count):
             theme = row[4]
             cesr_indicator = row[5]
             target = row[2]
-            
+
             if theme in business_theme_map:
                 if cesr_indicator in business_theme_map[theme]:
                     business_theme_map[theme][cesr_indicator].add(target)
@@ -456,8 +456,8 @@ def validate(worksheets, args, report, ignore_title_count):
             else:
                 business_theme_map[theme] = {}
                 business_theme_map[theme][cesr_indicator] = {target}
-                
-        
+
+
         rd["sheet"].write_row(rd["row"], 0, tuple(["Business Theme", "CESR Indicator", "SDG Target"]), rd["bold"])
         rd["row"]+=1
         sorttheme_map = OrderedDict(sorted(business_theme_map.items(), key=lambda t: t[0]))
@@ -474,7 +474,7 @@ def validate(worksheets, args, report, ignore_title_count):
         rd["row"]+=1
 
     def unmapped_indicators_map(wks_indicator, title_count, wks_mapping, title_count2, report):
-        
+
         import pdb
         # Create Reporting worksheet
         rwks = report.add_worksheet("Unmapped Indicators")
@@ -485,7 +485,7 @@ def validate(worksheets, args, report, ignore_title_count):
         rd["sheet"].write(0, 0, "Unmapped Indicators", rd["bold"])
         rd["sheet"].write(1, 0, None)
         rd["sheet"].write(2, 0, None)
-        
+
         # Build Mapping (Indicator -> BIA)
         # BIA_to_SDG: Look at column AM onwards
         ind_set = set()
@@ -502,25 +502,25 @@ def validate(worksheets, args, report, ignore_title_count):
                         if row[col] in ind_set:
                             ind_set.remove(row[col])
                     except Exception as ex:
-                        print("Warning: Failure parsing number at line {0}: {1}".format(n + title_count2, row[col]))       
-        
+                        print("Warning: Failure parsing number at line {0}: {1}".format(n + title_count2, row[col]))
+
         ind_list = list(ind_set)
         ind_list.sort(key=int)
         print("Unmapped Indicators")
         print(ind_list)
         print("length = {}".format(len(ind_set)))
 
-        rd["sheet"].write_row(rd["row"], 0, tuple(["Row ID","SDG Goal","SDG Target","Business Theme","CESR-edited Business Theme", 
+        rd["sheet"].write_row(rd["row"], 0, tuple(["Row ID","SDG Goal","SDG Target","Business Theme","CESR-edited Business Theme",
                 "CESR INDICATOR DESCRIPTION","Type of Indicator","Indicator Source", "UN Indicator Description","Indicator ID", "Date", "Indicator Usefulness Status"]), rd["bold"])
         rd["row"]+=1
 
         for rowid in ind_list:
             rowcols = ind_dict[rowid]
             rowline = ["{}".format(col) for n, col in enumerate(rowcols) if n < 12]
-            rd["sheet"].write_row(rd["row"], 0, tuple(rowline)) 
+            rd["sheet"].write_row(rd["row"], 0, tuple(rowline))
             rd["row"] += 1
-     
-    # Build source dictionary for Targets and                
+
+    # Build source dictionary for Targets and
     worksheet_name = "BIA to SDG mapping"
     wks = worksheets[worksheet_name]
     wks_target_mapping = worksheets["BIA to SDG Target Mapping"]
@@ -584,7 +584,7 @@ def unmap(livesheet, worksheets, title_report_count):
         update_cells.append(gspread.Cell(write_row_num, start_map_col + n, "Mapped_{}".format(n+1)))
     for n in range(max_unmapped_count):
         update_cells.append(gspread.Cell(write_row_num, start_unmap_col + n, "Unmapped_{}".format(n+1)))
-        
+
     # Write Values
     for n, row in enumerate(worksheets[sheetname]):
         map_vals = [a.strip() for a in row[map_col].splitlines()]
@@ -596,14 +596,14 @@ def unmap(livesheet, worksheets, title_report_count):
         unmap_vals.extend(padding)
 
         write_row_num += 1
-        
+
         for num in range(max_mapped_count):
             update_cells.append(gspread.Cell(write_row_num, start_map_col + num, map_vals[num]))
         for num in range(max_unmapped_count):
             update_cells.append(gspread.Cell(write_row_num, start_unmap_col + num, unmap_vals[num]))
 
     writesheet.update_cells(update_cells)
-        
+
 
 def sync(writesheet, worksheets, title_count, direct_column):
     """Build a python graph representation of data"""
@@ -616,12 +616,12 @@ def sync(writesheet, worksheets, title_count, direct_column):
 
         target_map = {}
         wks = worksheets["SDG Targets"]
-        
+
         target_col = utils.get_column(wks, 2)
         for cell in target_col:
             strsplit = cell.split()
             target_map[strsplit[0].strip()] = cell
-        
+
         return target_map
 
     def sync_table(target_map):
@@ -632,31 +632,31 @@ def sync(writesheet, worksheets, title_count, direct_column):
         valid_target_dict = utils.get_valid_target_map(worksheets["BIA to SDG mapping"], colnumber)
         write_row_num = title_count
         for row in worksheets["BIA to SDG Target Mapping"]:
-            
+
             writetarget = row[0]
-        
+
             targets = []
             if writetarget in valid_target_dict:
                 targets = valid_target_dict[writetarget]
             padding = [''] * (20 - len(targets))
             targets.extend(padding)
-            
+
             write_row_num += 1
-        
+
             for n in range(len(targets)):
-                
+
                 if targets[n] == '':
                     update_cells.append(gspread.Cell(write_row_num, 12 + n, ''))
                 else:
                     update_cells.append(gspread.Cell(write_row_num, 12 + n, target_text_map[targets[n]]))
-                    
+
         # Update all cells
         writesheet.update_cells(update_cells)
 
 
     tmap = build_target_map()
     sync_table(tmap)
-    
+
 
 def download_and_remove_title(sheet):
     """
@@ -685,9 +685,9 @@ def download_and_remove_title(sheet):
 
 
 def main():
- 
+
     # Define inputs to scripts
-   
+
     parser = argparse.ArgumentParser(
         description="Tool to manipulate SDG spreadsheet such as validation, build graph links and sync sheets")
 
@@ -704,7 +704,7 @@ def main():
         default = False,
         help = "If specified, similar indicator test does not filter based on QA column"
     )
-        
+
     parser.add_argument(
         "--deeply-similar",
         action = "store_true",
@@ -718,19 +718,19 @@ def main():
         default = False,
         help = "Perform against 'live' Validation report"
     )
-    
+
     args = parser.parse_args()
 
     try:
 
-        # Initialize Google and open Spreadsheet        
+        # Initialize Google and open Spreadsheet
         initialize_google()
         sheet_name = "BIA V5 SDG Alignment as of 05-2018 WORKING DRAFT.xlsx"
         ssheet = open_spreadsheet(sheet_name)
 
         # Cache GoogleSheet data to avoid bumping into API limits
         worksheet_dict, ignore_title_count = download_and_remove_title(ssheet)
-     
+
         if args.action == "validate":
             print("Using sheet: {}".format(sheet_name))
             # Create validation report
@@ -755,7 +755,7 @@ def main():
     except Exception as ex:
         traceback.print_exc()
         print("Error while processing script: {}".format(ex))
-        
+
 
 if __name__ == "__main__":
   main()
